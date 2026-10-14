@@ -1,0 +1,8 @@
+{
+  "id": "wiki-viewer",
+  "name": "Wiki Viewer",
+  "media": [],
+  "requirements": {
+    "paseo": ">=0.11.2"
+  }
+}
