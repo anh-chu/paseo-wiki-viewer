@@ -2,7 +2,7 @@ Wiki Viewer opens a Paseo workspace in [wiki-viewer](https://www.npmjs.com/packa
 
 Search for "Open Wiki Viewer" in the Command Center to open it in the Explorer sidebar, or add the **Wiki Viewer** panel to a workspace. The panel installs or updates wiki-viewer from npm when you press its button; it never downloads anything on its own. On desktop and in the browser the wiki shows inside the panel, with **Open in tab** for a full browser tab. On iOS and Android the panel opens it in your system browser.
 
-On desktop and in the browser, clicking a file path in an agent's chat opens that file in the Wiki Viewer sidebar instead of a Paseo file tab. Alt-click (Option-click) keeps Paseo's file tab. Paths that do not name an existing file inside the workspace, such as a bare file name Paseo has to search for, still go to Paseo.
+On desktop and in the browser, clicking a file path in an agent's chat opens that file in the Wiki Viewer sidebar instead of a Paseo file tab. Alt-click (Option-click) keeps Paseo's file tab. A bare or partial name such as `panel.tsx` opens the most recently modified workspace file whose path ends with it. Links that match no file in the workspace still go to Paseo.
 
 ## How it works
 
@@ -18,4 +18,4 @@ Under Settings, Plugins, Wiki Viewer:
 
 ## Limits
 
-The proxy listens on all interfaces of the daemon machine and uses plain HTTP, so anyone on that network who obtains a grant URL can read that workspace until the grant expires. The managed install needs `npm` and `tar` on the daemon's `PATH` and is about 30 MB.
+The proxy listens on all interfaces of the daemon machine and uses plain HTTP, so anyone on that network who obtains a grant URL can read that workspace until the grant expires. The managed install needs `npm` and `tar` on the daemon's `PATH` and is about 30 MB. Looking up bare file names needs `rg` (ripgrep) on the daemon's `PATH`; the plugin keeps a list of each workspace's files in memory, and in a very large workspace the first lookup can take several seconds.

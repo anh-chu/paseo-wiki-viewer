@@ -29,8 +29,8 @@ interface WebMouseEvent {
 }
 interface WebGlobal {
   readonly document: {
-    addEventListener(type: "click", listener: (event: WebMouseEvent) => void, capture: boolean): void;
-    removeEventListener(type: "click", listener: (event: WebMouseEvent) => void, capture: boolean): void;
+    addEventListener(type: "click" | "mouseover", listener: (event: WebMouseEvent) => void, capture: boolean): void;
+    removeEventListener(type: "click" | "mouseover", listener: (event: WebMouseEvent) => void, capture: boolean): void;
   };
   readonly location: { readonly pathname: string };
   readonly MouseEvent: new (type: "click", init: { bubbles: boolean; cancelable: boolean }) => unknown;
@@ -64,20 +64,28 @@ export function postOpenFile(frame: unknown, frameUrl: string, path: string) {
  * renders those links as `<a style="display: contents">` around the link text.
  * `open` resolves to false when the link is not a workspace file; the click is
  * then replayed so Paseo handles it as usual. Alt-click always goes to Paseo.
+ * Hovering a link calls `prefetch`, as Paseo does, so the click is quick.
  */
-export function interceptChatFileLinks(open: (target: string, workspaceId: string) => Promise<boolean>): () => void {
+export function interceptChatFileLinks(handlers: {
+  prefetch(target: string, workspaceId: string): void;
+  open(target: string, workspaceId: string): Promise<boolean>;
+}): () => void {
   if (Platform.OS !== "web") return () => {};
   const web = globalThis as unknown as WebGlobal;
+  const fileLinkAt = (element: WebElement | null) => {
+    const anchor = typeof element?.closest === "function" ? element.closest("a[href]") : null;
+    if (!anchor || anchor.style.display !== "contents") return null;
+    const href = anchor.getAttribute("href");
+    if (!href || (/^[a-z][a-z0-9+.-]*:/i.test(href) && !/^file:/i.test(href))) return null;
+    const match = /^\/h\/[^/]+\/workspace\/([^/?#]+)/.exec(web.location.pathname);
+    return match ? { href, workspaceId: decodeURIComponent(match[1]!) } : null;
+  };
   let replaying = false;
   const onClick = (event: WebMouseEvent) => {
     if (replaying || event.button !== 0 || event.altKey || event.metaKey || event.ctrlKey || event.shiftKey) return;
     const element = event.target;
-    const anchor = typeof element?.closest === "function" ? element.closest("a[href]") : null;
-    if (!element || !anchor || anchor.style.display !== "contents") return;
-    const href = anchor.getAttribute("href");
-    if (!href || (/^[a-z][a-z0-9+.-]*:/i.test(href) && !/^file:/i.test(href))) return;
-    const match = /^\/h\/[^/]+\/workspace\/([^/?#]+)/.exec(web.location.pathname);
-    if (!match) return;
+    const link = fileLinkAt(element);
+    if (!element || !link) return;
     event.preventDefault();
     event.stopImmediatePropagation();
     const replay = () => {
@@ -88,13 +96,21 @@ export function interceptChatFileLinks(open: (target: string, workspaceId: strin
         replaying = false;
       }
     };
-    open(href, decodeURIComponent(match[1]!)).then(
+    handlers.open(link.href, link.workspaceId).then(
       (handled) => {
         if (!handled) replay();
       },
       replay,
     );
   };
+  const onHover = (event: WebMouseEvent) => {
+    const link = fileLinkAt(event.target);
+    if (link) handlers.prefetch(link.href, link.workspaceId);
+  };
   web.document.addEventListener("click", onClick, true);
-  return () => web.document.removeEventListener("click", onClick, true);
+  web.document.addEventListener("mouseover", onHover, true);
+  return () => {
+    web.document.removeEventListener("click", onClick, true);
+    web.document.removeEventListener("mouseover", onHover, true);
+  };
 }

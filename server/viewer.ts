@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync } from "node:fs";
 import { createServer, request, type IncomingMessage, type Server, type ServerResponse } from "node:http";
@@ -497,9 +497,88 @@ export function createWikiService(readConfig: () => Promise<ViewerConfig>) {
   return { prepare, describeVersion, update, dispose };
 }
 
-// A chat link target ("src/a.ts:12", "/abs/b.md#L3", "file:///x") as a path
-// relative to the workspace, when it names an existing file inside it.
-export function resolveWorkspaceFile(directory: string, target: string): string | null {
+function insideRoot(root: string, real: string): string | null {
+  const rel = relative(root, real);
+  if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) return null;
+  return rel.split(sep).join("/");
+}
+
+function listFiles(root: string, glob?: string): Promise<string[]> {
+  const args = ["--files", "-g", "!node_modules", ...(glob ? ["-g", glob] : [])];
+  return new Promise((resolve, reject) => {
+    execFile("rg", args, { cwd: root, timeout: 30_000, maxBuffer: 256 << 20 }, (error, stdout) => {
+      // rg exits 1 when nothing matches; that is an empty list, not a failure.
+      if (error && !(typeof error.code === "number" && error.code === 1)) return reject(error);
+      resolve(String(stdout).split("\n").filter((line) => line !== ""));
+    });
+  });
+}
+
+// Listing a large workspace takes seconds, so each one keeps a file list that
+// is served while a newer one is built in the background.
+const INDEX_TTL_MS = 60_000;
+const MAX_INDEXES = 4;
+const indexes = new Map<string, { at: number; files: string[] }>();
+const building = new Map<string, Promise<{ at: number; files: string[] }>>();
+
+function rebuildIndex(root: string) {
+  let pending = building.get(root);
+  if (!pending) {
+    pending = listFiles(root)
+      .then((files) => {
+        const index = { at: Date.now(), files };
+        indexes.delete(root);
+        indexes.set(root, index);
+        for (const key of indexes.keys()) if (indexes.size > MAX_INDEXES) indexes.delete(key);
+        return index;
+      })
+      .finally(() => building.delete(root));
+    building.set(root, pending);
+  }
+  return pending;
+}
+
+function fileIndex(root: string) {
+  const cached = indexes.get(root);
+  if (!cached) return rebuildIndex(root);
+  if (Date.now() - cached.at > INDEX_TTL_MS) rebuildIndex(root).catch(() => {});
+  return Promise.resolve(cached);
+}
+
+export function warmFileIndex(directory: string) {
+  try {
+    fileIndex(realpathSync(directory)).catch(() => {});
+  } catch {}
+}
+
+function newestFirst(root: string, files: string[]): string[] {
+  return files
+    .map((line) => {
+      try {
+        return { line, mtime: statSync(join(root, line)).mtimeMs };
+      } catch {
+        return null;
+      }
+    })
+    .filter((entry): entry is { line: string; mtime: number } => entry !== null)
+    .sort((a, b) => b.mtime - a.mtime)
+    .map((entry) => entry.line);
+}
+
+// Workspace files whose path ends with `suffix`, newest first, like Paseo's own
+// suffix lookup for bare names in chat. Needs ripgrep on the daemon's PATH.
+async function findBySuffix(root: string, suffix: string): Promise<string[]> {
+  const index = await fileIndex(root).catch(() => null);
+  const matches = index ? index.files.filter((file) => file === suffix || file.endsWith(`/${suffix}`)) : [];
+  if (matches.length > 0 || (index && Date.now() - index.at < 5000)) return newestFirst(root, matches);
+  // The file may be newer than the index.
+  const glob = `**/${suffix.replace(/[[\]{}*?!\\]/g, "\\$&")}`;
+  return newestFirst(root, await listFiles(root, glob).catch(() => []));
+}
+
+// A chat link target ("src/a.ts:12", "/abs/b.md#L3", "file:///x", "panel.tsx")
+// as a path relative to the workspace, when it names an existing file inside it.
+export async function resolveWorkspaceFile(directory: string, target: string): Promise<string | null> {
   let value = target.trim();
   if (value.startsWith("file://")) value = value.slice("file://".length);
   else if (value.startsWith("file:")) value = value.slice("file:".length);
@@ -507,7 +586,9 @@ export function resolveWorkspaceFile(directory: string, target: string): string 
   try {
     value = decodeURIComponent(value);
   } catch {}
-  const candidates = [value, value.replace(/:\d+(?::\d+)?(?:-\d+(?::\d+)?)?$/, ""), value.replace(/\(\d+(?:,\d+)?\)$/, "")];
+  const candidates = [value, value.replace(/:\d+(?::\d+)?(?:-\d+(?::\d+)?)?$/, ""), value.replace(/\(\d+(?:,\d+)?\)$/, "")].filter(
+    (candidate, index, all) => candidate !== "" && all.indexOf(candidate) === index,
+  );
   let root: string;
   try {
     root = realpathSync(directory);
@@ -515,17 +596,20 @@ export function resolveWorkspaceFile(directory: string, target: string): string 
     return null;
   }
   for (const candidate of candidates) {
-    if (candidate === "") continue;
-    let real: string;
     try {
-      real = realpathSync(isAbsolute(candidate) ? candidate : join(root, candidate));
-      if (!statSync(real).isFile()) continue;
-    } catch {
-      continue;
+      const real = realpathSync(isAbsolute(candidate) ? candidate : join(root, candidate));
+      if (statSync(real).isFile()) return insideRoot(root, real);
+    } catch {}
+  }
+  // Not a path from the workspace root: look it up by suffix, as Paseo does.
+  for (const candidate of candidates) {
+    if (isAbsolute(candidate) || candidate.split("/").includes("..")) continue;
+    for (const match of await findBySuffix(root, candidate.replace(/^\.\//, ""))) {
+      try {
+        const rel = insideRoot(root, realpathSync(join(root, match)));
+        if (rel) return rel;
+      } catch {}
     }
-    const rel = relative(root, real);
-    if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) return null;
-    return rel.split(sep).join("/");
   }
   return null;
 }
