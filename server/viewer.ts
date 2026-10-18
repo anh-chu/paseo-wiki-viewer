@@ -1,10 +1,10 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync } from "node:fs";
 import { createServer, request, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { homedir, hostname, tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join, relative, sep } from "node:path";
 
 // The plugin always targets the latest published release; there is deliberately
 // no pinned version, so the installed viewer never silently diverges from it.
@@ -233,6 +233,13 @@ function grantScript(grant: string): string {
       try { Object.defineProperty(window, name, { value: memory, configurable: true }); } catch {}
     }
   }
+  // The viewer accepts "open-file" only from its own origin; relay the panel's
+  // request when it proves it holds this page's grant.
+  window.addEventListener("message", (event) => {
+    const data = event.data;
+    if (!data || data.type !== "paseo-wiki-open" || data.grant !== grant || typeof data.path !== "string") return;
+    window.postMessage({ type: "open-file", path: data.path }, location.origin);
+  });
   const fetch0 = window.fetch;
   window.fetch = (input, init) => {
     if (input instanceof Request) input = new Request(withGrant(input.url), input);
@@ -488,4 +495,37 @@ export function createWikiService(readConfig: () => Promise<ViewerConfig>) {
   }
 
   return { prepare, describeVersion, update, dispose };
+}
+
+// A chat link target ("src/a.ts:12", "/abs/b.md#L3", "file:///x") as a path
+// relative to the workspace, when it names an existing file inside it.
+export function resolveWorkspaceFile(directory: string, target: string): string | null {
+  let value = target.trim();
+  if (value.startsWith("file://")) value = value.slice("file://".length);
+  else if (value.startsWith("file:")) value = value.slice("file:".length);
+  value = value.replace(/#.*$/, "");
+  try {
+    value = decodeURIComponent(value);
+  } catch {}
+  const candidates = [value, value.replace(/:\d+(?::\d+)?(?:-\d+(?::\d+)?)?$/, ""), value.replace(/\(\d+(?:,\d+)?\)$/, "")];
+  let root: string;
+  try {
+    root = realpathSync(directory);
+  } catch {
+    return null;
+  }
+  for (const candidate of candidates) {
+    if (candidate === "") continue;
+    let real: string;
+    try {
+      real = realpathSync(isAbsolute(candidate) ? candidate : join(root, candidate));
+      if (!statSync(real).isFile()) continue;
+    } catch {
+      continue;
+    }
+    const rel = relative(root, real);
+    if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) return null;
+    return rel.split(sep).join("/");
+  }
+  return null;
 }

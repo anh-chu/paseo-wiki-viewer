@@ -42,3 +42,10 @@ export const updateWiki = defineRpc({
   input: z.object({}),
   output: z.object({ updated: z.boolean(), previous: z.string().nullable(), version: z.string().nullable() }),
 });
+
+// Maps a chat file link to a file inside the workspace, or null to leave it to Paseo.
+export const resolveWikiFile = defineRpc({
+  name: "wiki.resolve",
+  input: z.object({ workspaceId: z.string().min(1), target: z.string() }),
+  output: z.object({ path: z.string().nullable() }),
+});
