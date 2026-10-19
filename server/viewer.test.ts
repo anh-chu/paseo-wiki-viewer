@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync,
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
-import { resolveWorkspaceFile } from "./viewer";
+import { resolveWorkspaceFile, rootSentinelsMatch } from "./viewer";
 
 const base = mkdtempSync(join(tmpdir(), "wiki-resolve-"));
 const root = join(base, "workspace");
@@ -51,4 +51,16 @@ test("client and shared code has no class syntax", () => {
       assert.doesNotMatch(readFileSync(join(dir, file), "utf8"), /^\s*(export\s+)?class\s/m, `${dir}/${file}`);
     }
   }
+});
+
+const b64 = (dir: string) => Buffer.from(dir).toString("base64url");
+
+test("asset root sentinels must name the granted root", () => {
+  assert.equal(rootSentinelsMatch(`/api/assets/_root/${b64(root)}/OVERVIEW.md`, root), true);
+  assert.equal(rootSentinelsMatch("/api/files/OVERVIEW.md", root), true);
+  assert.equal(rootSentinelsMatch(`/api/assets/_root/${b64(outside)}/secret.txt`, root), false);
+  assert.equal(rootSentinelsMatch(`/api/assets/%5Froot/${b64(outside)}/secret.txt`, root), false);
+  assert.equal(rootSentinelsMatch(`/api/assets/_root/${b64(`${root}/../outside`)}/secret.txt`, root), false);
+  assert.equal(rootSentinelsMatch("/api/assets/_root", root), false);
+  assert.equal(rootSentinelsMatch("/api/assets/_root/%E0%A4%A", root), false);
 });

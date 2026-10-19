@@ -328,6 +328,23 @@ function proxy(req: IncomingMessage, res: ServerResponse, port: number, url: URL
   req.pipe(upstream);
 }
 
+// The viewer reads `_root/<base64url-dir>` asset paths as a replacement for
+// ?root=, so a path sentinel may only name the grant's own root.
+export function rootSentinelsMatch(pathname: string, root: string): boolean {
+  let segments: string[];
+  try {
+    segments = pathname.split("/").map((segment) => decodeURIComponent(segment));
+  } catch {
+    return false;
+  }
+  return segments.every((segment, i) => {
+    if (segment !== "_root") return true;
+    const encoded = segments[i + 1];
+    if (!encoded) return false;
+    return Buffer.from(encoded.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8") === root;
+  });
+}
+
 function text(res: ServerResponse, status: number, body: string) {
   res.writeHead(status, { "content-type": "text/plain; charset=utf-8" });
   res.end(body);
@@ -366,6 +383,7 @@ export function createWikiService(readConfig: () => Promise<ViewerConfig>) {
       grants.delete(grant);
       return text(res, 403, "wiki grant is no longer valid");
     }
+    if (!rootSentinelsMatch(url.pathname, entry.root)) return text(res, 403, "outside the granted workspace");
     if (!activeViewer) return text(res, 503, "wiki viewer is not running");
     entry.expiresAt = Date.now() + GRANT_TTL_MS;
     proxy(req, res, activeViewer.port, url, entry.root, grant);
