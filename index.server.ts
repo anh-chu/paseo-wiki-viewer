@@ -19,6 +19,9 @@ export default function contribute(server: PluginServerContext) {
     return wiki.prepare(workspace.workspaceDirectory);
   });
   server.handle(resolveWikiFile, async ({ workspaceId, target }, { paseo }) => {
+    // Off: report no match, so the click goes on to Paseo's file tab.
+    const current = await settings.read();
+    if (current.status === "ready" && !current.values.openChatLinks) return { path: null };
     const workspace = await paseo.workspaces.ref(workspaceId).refresh();
     return { path: workspace ? await resolveWorkspaceFile(workspace.workspaceDirectory, target) : null };
   });

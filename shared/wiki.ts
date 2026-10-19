@@ -6,6 +6,8 @@ export const wikiSettings = defineSettings({
   scope: "host",
   version: 1,
   schema: z.object({
+    // Clicking a file path in chat opens it in the Wiki Viewer sidebar.
+    openChatLinks: z.boolean().default(true),
     // Base URL the client opens, e.g. http://devvm:7791. Empty: http://<daemon hostname>:<port>.
     publicUrl: z.string().default(""),
     // Port of the grant-checking proxy on the daemon machine. 0 picks a free port.

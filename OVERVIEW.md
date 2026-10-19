@@ -12,6 +12,7 @@ The daemon runs wiki-viewer on `127.0.0.1` and puts a small access-checking prox
 
 Under Settings, Plugins, Wiki Viewer:
 
+- **Open chat file links in Wiki Viewer**: on by default. Turn it off to leave chat links to Paseo's file tab.
 - **Public URL**: the base URL your devices use to reach the daemon. Empty uses `http://<daemon hostname>:<port>`. Set it when the daemon is reached through another name, a tunnel, or HTTPS.
 - **Port**: the proxy port. 0 picks a free port at each start; pin it if a firewall must allow it.
 - **Viewer root**: run an existing wiki-viewer build or source checkout instead of the managed install in `~/.paseo/wiki-viewer`.
