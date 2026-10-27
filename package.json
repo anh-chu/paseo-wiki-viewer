@@ -1,6 +1,6 @@
 {
   "name": "paseo-wiki-viewer",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Paseo plugin: browse a workspace in wiki-viewer from the Explorer sidebar, and open chat file links there",
   "keywords": [
     "paseo",
