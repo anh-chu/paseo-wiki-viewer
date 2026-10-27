@@ -2,11 +2,11 @@ Wiki Viewer opens a Paseo workspace in [wiki-viewer](https://www.npmjs.com/packa
 
 Search for "Open Wiki Viewer" in the Command Center to open it in the Explorer sidebar, or add the **Wiki Viewer** panel to a workspace. The panel installs or updates wiki-viewer from npm when you press its button; it never downloads anything on its own. On desktop and in the browser the wiki shows inside the panel, with **Open in tab** for a full browser tab. On iOS and Android the panel opens it in your system browser.
 
-On desktop and in the browser, clicking a file path in an agent's chat opens that file in the Wiki Viewer sidebar instead of a Paseo file tab. Alt-click (Option-click) keeps Paseo's file tab. A bare or partial name such as `panel.tsx` opens the most recently modified workspace file whose path ends with it. Links that match no file in the workspace still go to Paseo.
+On desktop and in the browser, clicking a file path in an agent's chat opens that file in the Wiki Viewer sidebar instead of a Paseo file tab. Alt-click (Option-click) keeps Paseo's file tab. A bare or partial name such as `panel.tsx` opens the most recently modified workspace file whose path ends with it. An absolute path outside the workspace opens a separate viewer rooted at that file's directory. Missing files still go to Paseo.
 
 ## How it works
 
-The daemon runs wiki-viewer on `127.0.0.1` and puts a small access-checking proxy in front of it. Each open link carries a random grant tied to one workspace directory; the proxy rejects requests without a valid grant and fixes the browsed root to that directory. Because a frame inside Paseo cannot keep cookies, the proxy adds a small script to each viewer page that attaches the grant to the page's own requests. A grant expires after 30 minutes without use.
+The daemon runs wiki-viewer on `127.0.0.1` and puts a small access-checking proxy in front of it. Each open link carries a random grant tied to one directory; the proxy requires a valid grant for file access and fixes the browsed root to that directory. Outside files get a new grant for their containing directory. Because a frame inside Paseo cannot keep cookies, the proxy adds a small script to each viewer page that attaches the grant to the page's own requests. A grant expires after 30 minutes without use.
 
 ## Settings
 

@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync,
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
-import { resolveWorkspaceFile, rootSentinelsMatch } from "./viewer";
+import { resolveExternalFile, resolveWorkspaceFile, rootSentinelsMatch } from "./viewer";
 
 const base = mkdtempSync(join(tmpdir(), "wiki-resolve-"));
 const root = join(base, "workspace");
@@ -42,6 +42,20 @@ for (const [input, expected] of cases) {
     assert.equal(await resolveWorkspaceFile(root, input), expected);
   });
 }
+
+test("explicit outside files get their own directory scope", async () => {
+  const target = join(outside, "secret.txt");
+  assert.equal(await resolveWorkspaceFile(root, target), null);
+  for (const link of [target, `${target}:12:3`, `file://${target}#L3`, `${target}(12,3)`]) {
+    assert.deepEqual(resolveExternalFile(root, link), { directory: outside, path: "secret.txt" });
+  }
+});
+
+test("outside-file resolution rejects relative escapes, directories, missing files and workspace files", () => {
+  for (const target of ["../outside/secret.txt", "escape.txt", outside, join(outside, "missing.txt"), join(root, "OVERVIEW.md")]) {
+    assert.equal(resolveExternalFile(root, target), null);
+  }
+});
 
 // Mobile runs client bundles in Hermes, which rejects `class` syntax.
 test("client and shared code has no class syntax", () => {

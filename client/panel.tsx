@@ -18,7 +18,13 @@ function message(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
-export function WikiPanel({ theme, layout, workspaceId, navigation }: PluginWorkspacePanelProps) {
+export function WikiPanel(props: PluginWorkspacePanelProps) {
+  // A grant and pending file paths belong to one workspace. Explorer can reuse
+  // this panel when switching workspaces, so reset its state at that boundary.
+  return <WorkspaceWikiPanel key={props.workspaceId} {...props} />;
+}
+
+function WorkspaceWikiPanel({ theme, layout, workspaceId, navigation }: PluginWorkspacePanelProps) {
   const queryClient = useQueryClient();
   const describeVersion = useRpc(describeWikiVersion);
   const prepare = useRpc(prepareWiki);
@@ -78,9 +84,12 @@ export function WikiPanel({ theme, layout, workspaceId, navigation }: PluginWork
   useEffect(() => {
     if (!request || request.seq <= handledSeq.current) return;
     handledSeq.current = request.seq;
-    if (frameUrl && frameReady) postOpenFile(frameRef.current, frameUrl, request.path);
+    if (request.url) {
+      setPendingPath(null);
+      showFrame(request.url);
+    } else if (frameUrl && frameReady && url && new URL(frameUrl).searchParams.get("root") === new URL(url).searchParams.get("root")) postOpenFile(frameRef.current, frameUrl, request.path);
     else setPendingPath(request.path);
-  }, [request, frameUrl, frameReady]);
+  }, [request, frameUrl, frameReady, url]);
   useEffect(() => {
     if (!url) return;
     if (pendingPath !== null) {
@@ -95,9 +104,10 @@ export function WikiPanel({ theme, layout, workspaceId, navigation }: PluginWork
   }, [url, frameUrl, pendingPath]);
   const openBrowser = navigation?.openBrowser;
   const open = () => {
-    if (!url) return;
-    if (openBrowser) openBrowser({ url, workspaceId });
-    else void openExternalUrl(url);
+    const currentUrl = frameUrl ?? url;
+    if (!currentUrl) return;
+    if (openBrowser) openBrowser({ url: currentUrl, workspaceId });
+    else void openExternalUrl(currentUrl);
   };
 
   const installLabel = install.isPending

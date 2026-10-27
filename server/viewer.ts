@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpath
 import { createServer, request, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { homedir, hostname, tmpdir } from "node:os";
-import { isAbsolute, join, relative, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 
 // The plugin always targets the latest published release; there is deliberately
 // no pinned version, so the installed viewer never silently diverges from it.
@@ -365,7 +365,9 @@ export function createWikiService(readConfig: () => Promise<ViewerConfig>) {
     // (`/api/assets/_p/<token>/…`) from a sandboxed origin that carries no
     // cookie. The wiki validates that token itself, so it skips the grant gate.
     // Build assets hold no workspace data, and a cross-site frame sends them without the grant.
-    if (url.pathname.startsWith("/api/assets/_p/") || url.pathname.startsWith("/_next/static/")) {
+    // Native Worker/module loading bypasses the injected fetch wrapper too.
+    const isPdfWorker = (req.method === "GET" || req.method === "HEAD") && url.pathname === "/pdfjs/pdf.worker.min.mjs";
+    if (url.pathname.startsWith("/api/assets/_p/") || url.pathname.startsWith("/_next/static/") || isPdfWorker) {
       if (!activeViewer) return text(res, 503, "wiki viewer is not running");
       return proxy(req, res, activeViewer.port, url, null, "");
     }
@@ -386,6 +388,14 @@ export function createWikiService(readConfig: () => Promise<ViewerConfig>) {
     if (!rootSentinelsMatch(url.pathname, entry.root)) return text(res, 403, "outside the granted workspace");
     if (!activeViewer) return text(res, 503, "wiki viewer is not running");
     entry.expiresAt = Date.now() + GRANT_TTL_MS;
+    // The lite viewer has no accounts and denies /api/auth/*, but its settings
+    // component still polls for a session. Report the normal signed-out result
+    // after checking the grant, without enabling any upstream auth routes.
+    if (req.method === "GET" && url.pathname === "/api/auth/get-session") {
+      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+      res.end("null");
+      return;
+    }
     proxy(req, res, activeViewer.port, url, entry.root, grant);
   };
 
@@ -596,7 +606,7 @@ async function findBySuffix(root: string, suffix: string): Promise<string[]> {
 
 // A chat link target ("src/a.ts:12", "/abs/b.md#L3", "file:///x", "panel.tsx")
 // as a path relative to the workspace, when it names an existing file inside it.
-export async function resolveWorkspaceFile(directory: string, target: string): Promise<string | null> {
+function targetCandidates(target: string): string[] {
   let value = target.trim();
   if (value.startsWith("file://")) value = value.slice("file://".length);
   else if (value.startsWith("file:")) value = value.slice("file:".length);
@@ -604,9 +614,13 @@ export async function resolveWorkspaceFile(directory: string, target: string): P
   try {
     value = decodeURIComponent(value);
   } catch {}
-  const candidates = [value, value.replace(/:\d+(?::\d+)?(?:-\d+(?::\d+)?)?$/, ""), value.replace(/\(\d+(?:,\d+)?\)$/, "")].filter(
+  return [value, value.replace(/:\d+(?::\d+)?(?:-\d+(?::\d+)?)?$/, ""), value.replace(/\(\d+(?:,\d+)?\)$/, "")].filter(
     (candidate, index, all) => candidate !== "" && all.indexOf(candidate) === index,
   );
+}
+
+export async function resolveWorkspaceFile(directory: string, target: string): Promise<string | null> {
+  const candidates = targetCandidates(target);
   let root: string;
   try {
     root = realpathSync(directory);
@@ -628,6 +642,21 @@ export async function resolveWorkspaceFile(directory: string, target: string): P
         if (rel) return rel;
       } catch {}
     }
+  }
+  return null;
+}
+
+// An explicit absolute chat link can name a file outside the chat workspace.
+// Give that file its own directory scope; never reinterpret relative escapes
+// or broaden an existing workspace grant to a common ancestor.
+export function resolveExternalFile(directory: string, target: string): { directory: string; path: string } | null {
+  for (const candidate of targetCandidates(target)) {
+    if (!isAbsolute(candidate)) continue;
+    try {
+      const real = realpathSync(candidate);
+      if (!statSync(real).isFile() || insideRoot(realpathSync(directory), real)) continue;
+      return { directory: dirname(real), path: basename(real) };
+    } catch {}
   }
   return null;
 }

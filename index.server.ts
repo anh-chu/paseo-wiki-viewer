@@ -1,5 +1,5 @@
 import type { PluginServerContext } from "@getpaseo/plugin/server";
-import { createWikiService, resolveWorkspaceFile, warmFileIndex } from "./server/viewer";
+import { createWikiService, resolveExternalFile, resolveWorkspaceFile, warmFileIndex } from "./server/viewer";
 import { describeWikiVersion, prepareWiki, resolveWikiFile, updateWiki, wikiSettings } from "./shared/wiki";
 
 export default function contribute(server: PluginServerContext) {
@@ -23,7 +23,15 @@ export default function contribute(server: PluginServerContext) {
     const current = await settings.read();
     if (current.status === "ready" && !current.values.openChatLinks) return { path: null };
     const workspace = await paseo.workspaces.ref(workspaceId).refresh();
-    return { path: workspace ? await resolveWorkspaceFile(workspace.workspaceDirectory, target) : null };
+    if (!workspace) return { path: null };
+    const path = await resolveWorkspaceFile(workspace.workspaceDirectory, target);
+    if (path) return { path };
+    const external = resolveExternalFile(workspace.workspaceDirectory, target);
+    if (!external) return { path: null };
+    const prepared = await wiki.prepare(external.directory);
+    const url = new URL(prepared.url);
+    url.searchParams.set("file", external.path);
+    return { path: external.path, url: url.toString() };
   });
   server.handle(describeWikiVersion, () => wiki.describeVersion());
   server.handle(updateWiki, () => wiki.update());
