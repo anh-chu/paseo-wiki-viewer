@@ -1,13 +1,13 @@
 {
   "id": "wiki-viewer",
   "name": "Wiki Viewer",
-  "description": "Browse a workspace in wiki-viewer from the Explorer sidebar, and open file paths from agent chat there.",
+  "description": "Browse a workspace in wiki-viewer from the Explorer sidebar, and open documents in it from chat and the file tree.",
   "icon": "assets/icon.png",
   "media": [
     "assets/screenshot-chat-link.png",
     "assets/screenshot-code.png"
   ],
   "requirements": {
-    "paseo": ">=0.11.2"
+    "paseo": ">=0.13.0"
   }
 }

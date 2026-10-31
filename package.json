@@ -1,7 +1,7 @@
 {
   "name": "paseo-wiki-viewer",
   "version": "0.1.2",
-  "description": "Paseo plugin: browse a workspace in wiki-viewer from the Explorer sidebar, and open chat file links there",
+  "description": "Paseo plugin: browse a workspace in wiki-viewer from the Explorer sidebar, and open documents in it from chat and the file tree",
   "keywords": [
     "paseo",
     "paseo-plugin",
@@ -37,7 +37,7 @@
     "test": "node --import tsx --test server/*.test.ts"
   },
   "devDependencies": {
-    "@getpaseo/plugin": "0.11.2",
+    "@getpaseo/plugin": "^0.14.0",
     "@tanstack/react-query": "^5.90.11",
     "@types/node": "^24.19.2",
     "@types/react": "~19.2.0",

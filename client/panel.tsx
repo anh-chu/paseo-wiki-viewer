@@ -4,22 +4,21 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { describeWikiVersion, prepareWiki, updateWiki } from "../shared/wiki";
 import { useOpenRequest } from "./open-requests";
-import { canEmbed, postOpenFile, WikiFrame } from "./web";
+import { canEmbed, WikiFrame } from "./web";
 
 // Grants live 30 minutes after their last use. Refreshing every 10 keeps the
 // URL ready, so a press opens it synchronously (browsers block a new tab
 // opened after an awaited request).
 const PREPARE_INTERVAL_MS = 10 * 60 * 1000;
-// A chat link that opened this panel counts only if it arrived just now.
+// A "Show in sidebar" press that opened this panel counts only if it arrived just now.
 const FRESH_REQUEST_MS = 10_000;
-const READY_DELAY_MS = 1500;
 
 function message(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
 export function WikiPanel(props: PluginWorkspacePanelProps) {
-  // A grant and pending file paths belong to one workspace. Explorer can reuse
+  // A grant belongs to one workspace. Explorer can reuse
   // this panel when switching workspaces, so reset its state at that boundary.
   return <WorkspaceWikiPanel key={props.workspaceId} {...props} />;
 }
@@ -70,38 +69,17 @@ function WorkspaceWikiPanel({ theme, layout, workspaceId, navigation }: PluginWo
   // The frame keeps its first URL: the grant stays alive while the frame uses
   // it, and swapping in each refreshed URL would reload the page.
   const [frameUrl, setFrameUrl] = useState<string | undefined>();
-  // The viewer listens for open requests only once it has started, a moment after the frame loads.
-  const [frameReady, setFrameReady] = useState(false);
-  const [pendingPath, setPendingPath] = useState<string | null>(null);
-  const frameRef = useRef<unknown>(null);
+  useEffect(() => {
+    if (url && !frameUrl) setFrameUrl(url);
+  }, [url, frameUrl]);
   const request = useOpenRequest(workspaceId);
-  // A chat link that just opened this panel still needs showing; older ones were seen elsewhere.
+  // A request that just opened this panel still needs showing; older ones were seen elsewhere.
   const handledSeq = useRef(request && Date.now() - request.at < FRESH_REQUEST_MS ? request.seq - 1 : (request?.seq ?? 0));
-  const showFrame = (next: string) => {
-    setFrameReady(false);
-    setFrameUrl(next);
-  };
   useEffect(() => {
     if (!request || request.seq <= handledSeq.current) return;
     handledSeq.current = request.seq;
-    if (request.url) {
-      setPendingPath(null);
-      showFrame(request.url);
-    } else if (frameUrl && frameReady && url && new URL(frameUrl).searchParams.get("root") === new URL(url).searchParams.get("root")) postOpenFile(frameRef.current, frameUrl, request.path);
-    else setPendingPath(request.path);
-  }, [request, frameUrl, frameReady, url]);
-  useEffect(() => {
-    if (!url) return;
-    if (pendingPath !== null) {
-      // Not loaded yet: start the frame on the requested file instead.
-      const withFile = new URL(url);
-      withFile.searchParams.set("file", pendingPath);
-      setPendingPath(null);
-      showFrame(withFile.toString());
-    } else if (!frameUrl) {
-      showFrame(url);
-    }
-  }, [url, frameUrl, pendingPath]);
+    setFrameUrl(request.url);
+  }, [request]);
   const openBrowser = navigation?.openBrowser;
   const open = () => {
     const currentUrl = frameUrl ?? url;
@@ -125,7 +103,7 @@ function WorkspaceWikiPanel({ theme, layout, workspaceId, navigation }: PluginWo
         <View style={[styles.actions, styles.toolbar]}>
           <Pressable accessibilityRole="button" onPress={() => {
               // A fresh prepare restarts a dead viewer and yields a new grant, so the frame remounts.
-              void target.refetch().then(({ data }) => data && showFrame(data.url));
+              void target.refetch().then(({ data }) => data && setFrameUrl(data.url));
             }} style={styles.small}>
             <Text style={styles.secondaryText}>Reload</Text>
           </Pressable>
@@ -133,7 +111,7 @@ function WorkspaceWikiPanel({ theme, layout, workspaceId, navigation }: PluginWo
             <Text style={styles.secondaryText}>Open in tab</Text>
           </Pressable>
         </View>
-        <WikiFrame key={frameUrl} url={frameUrl} title="Wiki Viewer" frameRef={frameRef} onLoad={() => setTimeout(() => setFrameReady(true), READY_DELAY_MS)} />
+        <WikiFrame key={frameUrl} url={frameUrl} title="Wiki Viewer" />
       </View>
     );
   }

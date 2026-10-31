@@ -233,13 +233,6 @@ function grantScript(grant: string): string {
       try { Object.defineProperty(window, name, { value: memory, configurable: true }); } catch {}
     }
   }
-  // The viewer accepts "open-file" only from its own origin; relay the panel's
-  // request when it proves it holds this page's grant.
-  window.addEventListener("message", (event) => {
-    const data = event.data;
-    if (!data || data.type !== "paseo-wiki-open" || data.grant !== grant || typeof data.path !== "string") return;
-    window.postMessage({ type: "open-file", path: data.path }, location.origin);
-  });
   const fetch0 = window.fetch;
   window.fetch = (input, init) => {
     if (input instanceof Request) input = new Request(withGrant(input.url), input);
@@ -571,12 +564,6 @@ function fileIndex(root: string) {
   if (!cached) return rebuildIndex(root);
   if (Date.now() - cached.at > INDEX_TTL_MS) rebuildIndex(root).catch(() => {});
   return Promise.resolve(cached);
-}
-
-export function warmFileIndex(directory: string) {
-  try {
-    fileIndex(realpathSync(directory)).catch(() => {});
-  } catch {}
 }
 
 function newestFirst(root: string, files: string[]): string[] {

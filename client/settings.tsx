@@ -1,5 +1,5 @@
 import { useSettings } from "@getpaseo/plugin/client";
-import { SettingsAction, SettingsCard, SettingsInput, SettingsSection, SettingsSwitch } from "@getpaseo/plugin/client/ui";
+import { SettingsAction, SettingsCard, SettingsInput, SettingsSection } from "@getpaseo/plugin/client/ui";
 import { useState } from "react";
 import { Text } from "react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
@@ -26,17 +26,6 @@ function Editor({ settings }: { settings: ReadySettings }) {
 
   return (
     <>
-      <SettingsSection title="Chat">
-        <SettingsCard>
-          <SettingsSwitch
-            label="Open chat file links in Wiki Viewer"
-            hint="Clicking a file path in an agent's chat shows it in the sidebar. Alt-click always opens Paseo's file tab."
-            value={settings.values.openChatLinks}
-            disabled={settings.saving}
-            onValueChange={(openChatLinks) => void settings.save({ ...settings.values, openChatLinks }, settings.revision)}
-          />
-        </SettingsCard>
-      </SettingsSection>
       <SettingsSection title="Connection">
         <SettingsCard>
           <SettingsInput
