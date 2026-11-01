@@ -4,7 +4,7 @@
   "description": "Browse a workspace in wiki-viewer from the Explorer sidebar, and open documents in it from chat and the file tree.",
   "icon": "assets/icon.png",
   "media": [
-    "assets/screenshot-chat-link.png",
+    "assets/screenshot-file-tab.png",
     "assets/screenshot-code.png"
   ],
   "requirements": {
